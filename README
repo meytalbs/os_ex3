@@ -29,9 +29,11 @@ Output: 7 informations:
    6. Slowest time a child who has sorted using quick sort.
    7. program run time.
 
-compile: gcc -Wall ex3a.c -o ex3a
+in prog 1a the program took 440.394273 seconds in average to complete the job
+in this program the average run time is 429.687101
 
-run: ./ex1ba1 file_name factor(int)
+compile: gcc -Wall ex3a.c -o ex3a
+run: ./ex1ba1 factor(int)
 
 
 Program file: ex3b.c

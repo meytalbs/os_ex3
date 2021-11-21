@@ -15,157 +15,156 @@ Written by: Meytal Abrahamian  login: meytalben  id: 211369939
 // -------------------------------global variables-----------------------------
 #define ARR_SIZE 1000
 #define NUM_OF_CHILDREN 3
+#define SEED 17
 
 struct my_msg {
     pid_t status;
     int prime;
 };
 
-int end = 0;
+int count_new_prime = 0;
 
 // ----------------------------------------------------------------------------
-void valid_status(pid_t status);
-void do_parent(pid_t children_status[], int arr[], int pipe_descs[], 
-               int pipe_personal[][2]);
+void do_parent(pid_t children_pid[], int pipe_descs[], int pipe_personal[][2]);
 void do_child(int pipe_descs[], int pipe_personal[]);
-int is_prime(int number);
+void create_children(int pipe_descs[], int pipe_personal[][2]);
+void close_parent_pipe(int pipe_descs[], int descs_path, 
+    int pipe_personal[][2], int personal_path);
+void kill_children(pid_t children_pid[]);
+void catch_signal(int term);
 void open_pipe(int pipe_id[]);
-int count_appear(int arr[], int num);
-void initialize_arr(int arr[]);
-void create_children(int arr[], pid_t* status, pid_t children_status[], 
-                     int pipe_descs[], int pipe_personal[][2]);
-void close_parent_pipe(int pipe_descs[], int path_in_descs, 
-                       int pipe_personal[][2], int path_in_personal);
-int child_num(pid_t children_status[], pid_t status);
-void catch_signal();
-// ----------------------------------------------------------------------------
+int get_prime();
+int count_appear(int arr[], int num, int index);
+int is_prime(int number);
+int child_num(pid_t children_pid[], pid_t status);
 
 // -------------------------------main-----------------------------------------
 int main()
 {
-    int arr[ARR_SIZE],   // for array of primes
-        pipe_descs[2],                      // for all childs & parent: child 
+    int pipe_descs[2],                      // for all childs & parent: child 
         pipe_personal[NUM_OF_CHILDREN][2];  // pipe to each child with parent
-    pid_t children_status[NUM_OF_CHILDREN],
-        status;
-    singal(SIGTERM ,catch_signal);
 
-    initialize_arr(arr);
     open_pipe(pipe_descs);                  // open the general pipe
-    create_children(arr, &status, children_status, pipe_descs, pipe_personal);
+    create_children(pipe_descs, pipe_personal);
 
     return EXIT_SUCCESS;
 }
 // ----------------------------------------------------------------------------
 
 // this function create all NUM_OF_CHILDREN and open personal pipe for each one
-void create_children(int arr[], pid_t* status, pid_t children_status[],
-    int pipe_descs[], int pipe_personal[][2])
+void create_children(int pipe_descs[], int pipe_personal[][2])
 {
-    int i;              // for loop
+    pid_t children_pid[NUM_OF_CHILDREN];
+    pid_t status;
+    int i;
 
-    for (i = 0; i < NUM_OF_CHILDREN; ++i) {
+    for (i = 0; i < NUM_OF_CHILDREN; ++i)
+    {
         open_pipe(pipe_personal[i]);
-        *status = fork();
-        valid_status(*status);
+        status = fork();
+        if (status < 0)
+        {
+            perror("can not fork");
+            exit(EXIT_FAILURE);
+        }
+        else if (status == 0)
+            do_child(pipe_descs, pipe_personal[i]);
 
-        if (*status == 0)
-            do_child(pipe_descs, pipe_personal[0]); // todo
-            exit(EXIT_SUCCESS);
-
-        children_status[i] = *status;        
+        children_pid[i] = status;
     }
 
-    do_parent(children_status, arr, pipe_descs, pipe_personal);
+    do_parent(children_pid, pipe_descs, pipe_personal);
 }
 // ----------------------------------------------------------------------------
 
 // this function is for parenth
 // it read prime from child, check appearance of this prime in array and write 
 // it to child. kill all children and print num of diffrent value in array
-void do_parent(pid_t children_status[], int arr[], int pipe_descs[], 
-               int pipe_personal[][2])
+void do_parent(pid_t children_pid[], int pipe_descs[], int pipe_personal[][2])
 {
     int count_new_prime = 0,             // to count new value in array
         appearance = 0,                  // to count appearance of num in array
-        i,                               // for loop
-        msg[2];                          // { child_pid, prime }
+        i;                               // for loop
+    int arr[ARR_SIZE];
+    struct my_msg msg;                   // { child_pid, prime }
 
     close_parent_pipe(pipe_descs, 1, pipe_personal, 0);
 
     for (i = 0; i < ARR_SIZE; ++i)
     {
         // read prime number from pipe (that child sent)
-        read(pipe_descs[0], &msg, sizeof(int)*2);          
-        arr[i] = msg.[1];
-        appearance = count_appear(arr, msg.[1]);
+        if (read(pipe_descs[0], &msg, sizeof(struct my_msg)) < 0)
+            exit(EXIT_FAILURE);
+        arr[i] = msg.prime;
+        appearance = count_appear(arr, msg.prime, i);
         if (appearance == 0)
             ++count_new_prime;
         // writh to child the appearance of the num he sent
-        write(pipe_personal[child_num(children_status, msg.[0])][1], 
-              &appearance, sizeof(int));
+        if (write(pipe_personal[child_num(children_pid, msg.status)][1],
+            &appearance, sizeof(int)) < 0)
+            exit(EXIT_FAILURE);
     }
 
-    kill_children(children_status);
-    printf("Sun of diffrent value in array: %d\n", count_new_prime);
+    kill_children(children_pid);
+    printf("Sum of diffrent value in array: %d\n", count_new_prime);
     close_parent_pipe(pipe_descs, 0, pipe_personal, 1);
-
-    exit(EXIT_SUCCESS);
 }
 // ----------------------------------------------------------------------------
 
 // this function is for children. in while loop it gets random num,
 // check if it prime and if it is send the num to parent, read from parent the
 // appearance of prime and when need to end it prints num of new prime it gave
-void do_child(int pipe_descs[], int pipe_personal[]) 
+void do_child(int pipe_descs[], int pipe_personal[])
 {
-    int count_new_prime = 0,            // for count new prime from this child
-        num,                            // for rand num
-        msg[2];                         // { child_pid, prime }
-
-    srand(17);                          // for rand
+    int num;			// for count new prime from this child
+    signal(SIGTERM, catch_signal);
+    srand(SEED);                        // for rand
     close(pipe_descs[0]);               // close pipe for reading
-    close(pipe_personal[1]);            // close pipe for writeing
-    
-    while (!end)
-    {
-        num = rand() % 999 + 2;         // get random val
-        if (is_prime(num))              // if is prime
-        {
-            msg[0] = getpid();
-            msg[1] = num;            
-            // sent to parent my id and prime
-            write(pipe_descs[1], &msg, sizeof(int)*2);  
-        }
-        // read from pipe the appearence of the prime num in array      
-        read(pipe_personal[0], &num, sizeof(int));     
-        if (num == 0) ++count_new_prime;
-    }
+    close(pipe_personal[1]);            // close pipe for writing
+    struct my_msg msg;
 
-    printf("Sum of diffrent value in child %id: %d\n", getpid(), 
-           count_new_prime);
-    close(pipe_descs[1]);               // close pipe for writeing
-    close(pipe_personal[0]);            // close pipe for reading
-    exit(EXIT_SUCCESS);
+    while (1)
+    {
+        num = get_prime();
+        msg.status = getpid();
+        msg.prime = num;
+        // sent to parent my id and prime
+        if (write(pipe_descs[1], &msg, sizeof(struct my_msg)) < 0)
+            exit(EXIT_FAILURE);
+
+        // read from pipe the appearence of the prime num in array      
+        if (read(pipe_personal[0], &num, sizeof(int)) < 0)
+            exit(EXIT_FAILURE);
+        if (num == 0)
+            ++count_new_prime;
+    }
+}
+// ----------------------------------------------------------------------------
+
+int get_prime()
+{
+    int num;
+    while (!is_prime(num = rand() % 999 + 2)) {}
+
+    return num;
 }
 // ----------------------------------------------------------------------------
 
 // this function is a signal hendler
-void catch_signal()
+void catch_signal(int term)
 {
-    end = 1;
+    printf("Sum of diffrent value:%d\tpid: %d\n", count_new_prime, getpid());
+    exit(EXIT_SUCCESS);
 }
 // ----------------------------------------------------------------------------
 
 // this function kill the children
-void kill_children(pid_t children_status[])
+void kill_children(pid_t children_pid[])
 {
     int i;
 
     for (i = 0; i < NUM_OF_CHILDREN; ++i)
-    {
-        kill(children_status[i], SIGTERM);
-    }
+        kill(children_pid[i], SIGTERM);
 }
 // ----------------------------------------------------------------------------
 
@@ -179,7 +178,7 @@ int is_prime(int number)
 
     for (i = 2; i * i < number; ++i)
     {
-        if (number % i == 0 && i != number)
+        if (number % i == 0)
             return 0;
     }
     return 1;
@@ -189,7 +188,7 @@ int is_prime(int number)
 // this function open pipe using pipe id
 void open_pipe(int pipe_id[])
 {
-    if (pipe(pipe_id) == -1) 
+    if (pipe(pipe_id) == -1)
     {
         perror("cannot open pipe");
         exit(EXIT_FAILURE);
@@ -197,50 +196,27 @@ void open_pipe(int pipe_id[])
 }
 // ----------------------------------------------------------------------------
 
-// this function check if status us valid
-void valid_status(pid_t status)
-{
-    if (status < 0)
-    {
-        perror("can not fork");
-        exit(EXIT_FAILURE);
-    }
-}
-// ----------------------------------------------------------------------------
-
-// this function initialize arr value to 0
-void initialize_arr(int arr[])
-{
-    int i;
-
-    for (i = 0; i < ARR_SIZE; ++i)
-    {
-        arr[i] = 0;
-    }
-}
-// ----------------------------------------------------------------------------
-
 // this function close pipe in perenth
-void close_parent_pipe(int pipe_descs[], int path_in_descs, 
-                       int pipe_personal[][2], int path_in_personal)
+void close_parent_pipe(int pipe_descs[], int descs_path,
+    int pipe_personal[][2], int personal_path)
 {
     int i;
 
-    close(pipe_descs[path_in_descs]);                      
+    close(pipe_descs[descs_path]);
     for (i = 0; i < NUM_OF_CHILDREN; ++i)
     {
-        close(pipe_personal[i][path_in_personal]);         
+        close(pipe_personal[i][personal_path]);
     }
 }
 // ----------------------------------------------------------------------------
 
 // this function count appearance of num in array and returns the result
-int count_appear(int arr[], int num)
+int count_appear(int arr[], int num, int index)
 {
     int i,
         counter = 0;
 
-    for (i = 0; i < ARR_SIZE && i != 0; ++i)
+    for (i = 0; i < index; ++i)
     {
         if (arr[i] == num)
             ++counter;
@@ -250,14 +226,14 @@ int count_appear(int arr[], int num)
 }
 // ----------------------------------------------------------------------------
 
-// this function find status in children_status arr and returns child index
-int child_num(pid_t children_status[], pid_t status)
+// this function find status in children_pid arr and returns child index
+int child_num(pid_t children_pid[], pid_t status)
 {
     int i;
 
     for (i = 0; i < NUM_OF_CHILDREN; ++i)
     {
-        if (children_status[i] == status)
+        if (children_pid[i] == status)
             return i;
     }
     return 0;
