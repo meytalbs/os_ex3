@@ -43,29 +43,31 @@ it end.
 
 
 #define NUM_OF_RUNS 50
-#define ARR_SIZE 5000//0
+#define ARR_SIZE 50000
 
-struct roo {
+struct Data_time {
 	double _average;
 	double _fastest;
 	double _slowest;
 };
 
-//-----------------------------prototype----------------------------------------
-void sort_and_time(struct roo bubble_data, struct roo quick_data);
-void randomize_arr(int arr[]);
+typedef void (*sort_func)(int[], int[]);
 
-void foo_bubble(struct roo bubble_data, int bubble_pipe[]);
-void bubble_sort(int arr[]);
+//-----------------------------prototype----------------------------------------
+void sort_and_time(struct Data_time* bubble_data, struct Data_time* quick_data);
+void randomize_arr(int arr[]);
+void main_process(struct Data_time* data, int pipe_sort[], int rand_arr[],
+	sort_func sorting);
+
+void bubble_sort(int arr[], int bubble_pipe[]);
 void swap(int* a, int* b);
 
-void foo_quick(struct roo quick_data, int quick_pipe[]);
-void quick_sort_prosses(int arr[]);
+void quick_sort_process(int arr[], int quick_pipe[]);
 void quick_sort(int arr[], int low, int high);
 int partition(int arr[], int low, int high);
 
-void print_run_time(struct roo bubble_data, struct roo quick_data);
-void calc_data(struct roo bubble_data, double run_time);
+void print_run_time(struct Data_time* bubble_data, struct Data_time* quick_data);
+void calc_data(struct Data_time* bubble_data, double run_time);
 
 //----------------------------------main----------------------------------------
 int main(int argc, char* argv[])
@@ -73,17 +75,17 @@ int main(int argc, char* argv[])
 	if (argc != 2)
 		exit(EXIT_FAILURE);
 
-	struct roo bubble_data = { 0, 100, 0 },		//average, fastest, slowest
-		quick_data = { 0, 100, 0 };		//average, fastest, slowest
+	struct Data_time bubble_data = { 0, 100, 0 },	//average, fastest, slowest
+		quick_data = { 0, 100, 0 };					//average, fastest, slowest
 
 
-	srand(12);//atoi(argv[2]));
+	srand(atoi(argv[1]));
 	struct timeval t0, t1;
 
 	gettimeofday(&t0, NULL);
 
-	sort_and_time(bubble_data, quick_data);
-	print_run_time(bubble_data, quick_data);
+	sort_and_time(&bubble_data, &quick_data);
+	print_run_time(&bubble_data, &quick_data);
 
 	gettimeofday(&t1, NULL);
 	printf("parent run time %lf\n", (double)(t1.tv_usec - t0.tv_usec) / 1000000
@@ -94,9 +96,9 @@ int main(int argc, char* argv[])
 
 //------------------------------------------------------------------------------
 // this function create chiled to quick sort and bubble sort
-void sort_and_time(struct roo bubble_data, struct roo quick_data)
+void sort_and_time(struct Data_time* bubble_data, struct Data_time* quick_data)
 {
-	int bubble_pipe[2], quick_pipe[2];
+	int bubble_pipe[2], quick_pipe[2], arr[ARR_SIZE];
 	int i;
 
 	if (pipe(bubble_pipe) == -1 || pipe(quick_pipe) == -1)
@@ -107,9 +109,14 @@ void sort_and_time(struct roo bubble_data, struct roo quick_data)
 
 	for (i = 0; i < NUM_OF_RUNS; ++i)
 	{
-		foo_bubble(bubble_data, bubble_pipe);
-		foo_quick(quick_data, quick_pipe);
+		randomize_arr(arr);
+		main_process(bubble_data, bubble_pipe, arr, bubble_sort);
+		main_process(quick_data, quick_pipe, arr, quick_sort_process);
 	}
+	close(bubble_pipe[0]);//end of dad use in pipe
+	close(bubble_pipe[1]);
+	close(quick_pipe[0]);
+	close(quick_pipe[1]);
 }
 
 //------------------------------------------------------------------------------
@@ -121,35 +128,32 @@ void randomize_arr(int arr[])
 		arr[i] = rand() % 1000;
 }
 
-//-----------------------------bubble sort--------------------------------------
-void foo_bubble(struct roo bubble_data, int bubble_pipe[])
+//------------------------------------------------------------------------------
+void main_process(struct Data_time* data, int pipe_sort[], int rand_arr[],
+	sort_func sorting)
 {
-	char ignore;
 	double time;
-	int arr[ARR_SIZE];
-	randomize_arr(arr);
+	char ignore;
 
-	pid_t bubble_child = fork();
-	if (0 > bubble_child)
+	pid_t status = fork();
+	if (0 > status)
 		exit(EXIT_FAILURE);
-	else if (0 == bubble_child)
+	else if (0 == status)
 	{
-		close(bubble_pipe[0]);
-		dup2(bubble_pipe[1], STDOUT_FILENO);
-		bubble_sort(arr);
+		close(pipe_sort[0]);
+		dup2(pipe_sort[1], STDOUT_FILENO);
+		sorting(rand_arr, pipe_sort);
 	}
 
-	waitpid(bubble_child, NULL, 0);
-	
-	close(bubble_pipe[1]);
-	scanf("%c", &ignore);
-	if (read(bubble_pipe[0], &time, sizeof(double)) < 0)
-		exit(EXIT_FAILURE);
-	calc_data(bubble_data, time);
+	wait(NULL);
+
+	dup2(pipe_sort[0], STDIN_FILENO);
+	scanf("%c%c%lf", &ignore, &ignore, &time);
+	calc_data(data, time);
 }
 
-//------------------------------------------------------------------------------
-void bubble_sort(int arr[])
+//-----------------------------bubble sort--------------------------------------
+void bubble_sort(int arr[], int bubble_pipe[])
 {
 	int i, j;
 	struct timeval t0, t1;
@@ -164,8 +168,11 @@ void bubble_sort(int arr[])
 	}
 
 	gettimeofday(&t1, NULL);
-	printf("%lf\n", (double)(t1.tv_usec - t0.tv_usec) / 1000000 +
+
+	printf("b %lf ", ((double)t1.tv_usec - t0.tv_usec) / 1000000 +
 		(double)(t1.tv_sec - t0.tv_sec));
+	fflush(stdout);
+	close(bubble_pipe[1]);
 	exit(EXIT_SUCCESS);
 }
 
@@ -178,35 +185,7 @@ void swap(int* a, int* b)
 }
 
 //------------------------------quick sort--------------------------------------
-void foo_quick(struct roo quick_data, int quick_pipe[])
-{
-	char ignore;
-	double time;
-	int arr[ARR_SIZE];
-	randomize_arr(arr);
-
-	pid_t quick_child = fork();
-
-	if (0 > quick_child)
-		exit(EXIT_FAILURE);
-	else if (0 == quick_child)
-	{
-		close(quick_pipe[0]);
-		dup2(quick_pipe[1], STDOUT_FILENO);
-		quick_sort_prosses(arr);
-	}
-
-	waitpid(quick_child, NULL, 0);
-	
-	close(quick_pipe[1]);
-	scanf("%c", &ignore);
-	if (read(quick_pipe[0], &time, sizeof(double)) < 0)
-		exit(EXIT_FAILURE);
-	calc_data(quick_data);
-}
-
-//------------------------------------------------------------------------------
-void quick_sort_prosses(int arr[])
+void quick_sort_process(int arr[], int quick_pipe[])
 {
 	struct timeval t0, t1;
 
@@ -215,9 +194,10 @@ void quick_sort_prosses(int arr[])
 	quick_sort(arr, 0, ARR_SIZE);
 
 	gettimeofday(&t1, NULL);
-	printf("%lf\n", (double)(t1.tv_usec - t0.tv_usec) / 1000000 +
+	printf("q %lf ", (double)(t1.tv_usec - t0.tv_usec) / 1000000 +
 		(double)(t1.tv_sec - t0.tv_sec));
-
+	fflush(stdout);
+	close(quick_pipe[1]);
 	exit(EXIT_SUCCESS);
 }
 
@@ -254,24 +234,27 @@ int partition(int arr[], int low, int high)
 
 //------------------------------------------------------------------------------
 // this function find run time of bubble sort and quick sort
-void print_run_time(struct roo bubble_data, struct roo quick_data)
+void print_run_time(struct Data_time* bubble_data, struct Data_time* quick_data)
 {
-	bubble_data._average /= NUM_OF_RUNS;
-	quick_data._average /= NUM_OF_RUNS;
+	bubble_data->_average /= NUM_OF_RUNS;
+	quick_data->_average /= NUM_OF_RUNS;
 
-	printf("bubble sort average: %lf\tquick sort average: %lf\n", bubble_data._average, quick_data._average);
-	printf("bubble sort fastest: %lf\tquick sort fastest: %lf\n", bubble_data._fastest, quick_data._fastest);
-	printf("bubble sort slowest: %lf\tquick sort slowest: %lf\n", bubble_data._slowest, quick_data._slowest);
+	printf("bubble sort average: %lf\tquick sort average: %lf\n",
+		bubble_data->_average, quick_data->_average);
+	printf("bubble sort fastest: %lf\tquick sort fastest: %lf\n",
+		bubble_data->_fastest, quick_data->_fastest);
+	printf("bubble sort slowest: %lf\tquick sort slowest: %lf\n",
+		bubble_data->_slowest, quick_data->_slowest);
 }
 
 //------------------------------------------------------------------------------
 //this func calc average, fastest time and slowest time of sort
-void calc_data(struct roo data, double run_time)
+void calc_data(struct Data_time* data, double run_time)
 {
-	data._average += run_time;
+	data->_average += run_time;
 
-	if (run_time < data._fastest)				//find fastest run time
-		data._fastest = run_time;
-	else if (run_time > data._slowest)			//find slowest run time
-		data._slowest = run_time;
+	if (run_time < data->_fastest)				//find fastest run time
+		data->_fastest = run_time;
+	else if (run_time > data->_slowest)			//find slowest run time
+		data->_slowest = run_time;
 }

@@ -1,0 +1,38 @@
+-------------------------------------------------------------------------------
+Written by: Meytal Abrahamian  login: meytalben  id: 211369939
+            Tomer Akrish              tomerak        315224295
+-------------------------------------------------------------------------------
+
+Program file: ex1ba1.c
+===============================================================================
+This program receives using the argument vector a natural number.
+
+The program repeats the following task 50 times:
+first will randomize an array of with the size of 50,0000
+it cerates two children:
+    Child A will sort the array using bubbles sort.
+    Child B will sort the array using quick sort.
+
+Each child sends information to their dad:
+A. Which sort was preformd: b or q
+B. How long did it take to sort the array.
+the dad will read the time it took to sort and and it to the right struct
+during the sort it will save the fastest and slowest time.
+
+Input: (in argument vector) number_to_srand
+Output: 7 informations: 
+   1. How long on average did it take to bubbles sort the data, 
+   2. How long did it take to quick sort.
+   3. Fastest time a child has run a bubble sort 
+   4. Fastest time a child has run a quick sort.
+   5. Slowest time a child who has sorted using bubble sort.
+   6. Slowest time a child who has sorted using quick sort.
+   7. program run time.
+
+compile: gcc -Wall ex3a.c -o ex3a
+
+run: ./ex1ba1 file_name factor(int)
+
+
+Program file: ex3b.c
+===============================================================================
