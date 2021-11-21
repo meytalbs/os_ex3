@@ -36,3 +36,30 @@ run: ./ex1ba1 file_name factor(int)
 
 Program file: ex3b.c
 ===============================================================================
+This program fill array of integers in prime numbers.
+to do that, it create NUM_OF_CHILDREN (3) that each one of them connect to main
+prosses with pipe. general pipe for all prosses and uniq pipe for each one of
+the child prosses with the father.
+each child in infinite loop gets random integer, check if it prime and if it is
+sent the integer to its father.
+the father get the integers from the child, count appearance of this integer in
+the array and return the result to child.
+when the array is full, the father send to its children to end.
+when the children get the msg that they need to end, they print how many new 
+prime each one of them gave to father and end their prosses.
+after all children finished, the father also print how many diffrent prime he
+have in the array and end.
+
+Input: no input
+Output: 4 informations:
+        Sum of diffrent value in child CHILD_PID THE_SUM 
+        Sum of diffrent value in child CHILD_PID THE_SUM 
+        Sum of diffrent value in child CHILD_PID THE_SUM 
+        Sum of diffrent value in array: THE_SUM_IN_ARRAY
+
+in this program we define NUM_OF_CHILDREN = 3 but they can be more them 3.
+therefor the output is depends on sum of children: for each one the program 
+print line as above and at the end, one line for the father
+
+compile: gcc -Wall ex3b.c -o ex3b
+run: ./ex3b
